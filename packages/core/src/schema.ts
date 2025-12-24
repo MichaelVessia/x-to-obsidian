@@ -60,6 +60,7 @@ export const AnalyzedBookmarkSchema = Schema.Struct({
   category: BookmarkCategorySchema,
   suggestedPath: Schema.String,
   tags: Schema.Array(Schema.String),
+  title: Schema.String,
   summary: Schema.optionalWith(Schema.String, { exact: true }),
   extractedContent: Schema.optionalWith(Schema.String, { exact: true }),
 });

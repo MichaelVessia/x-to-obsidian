@@ -12,6 +12,7 @@ const ClaudeResponseSchema = Schema.Struct({
   suggestedPath: Schema.String,
   tags: Schema.Array(Schema.String),
   summary: Schema.optionalWith(Schema.String, { exact: true }),
+  title: Schema.String,
 });
 
 export interface BookmarkAnalyzerService {
@@ -42,7 +43,8 @@ const buildPrompt = (bookmark: RawBookmark): string => {
     `  "category": "thread" | "link" | "image" | "quote" | "standalone",`,
     `  "suggestedPath": "folder/subfolder",`,
     `  "tags": ["tag1", "tag2"],`,
-    `  "summary": "Brief summary if useful"`,
+    `  "summary": "Brief summary if useful",`,
+    `  "title": "Descriptive title for the note"`,
     `}`,
     ``,
     `Category rules:`,
@@ -54,6 +56,7 @@ const buildPrompt = (bookmark: RawBookmark): string => {
     ``,
     `For suggestedPath, just return empty string (we use flat folder structure).`,
     `For tags, use Title Case names suitable for Obsidian wikilinks (e.g., "TypeScript", "Functional Programming", "Machine Learning").`,
+    `For title, create a concise, descriptive title (3-8 words) that captures the main topic or insight. Use Title Case. Examples: "Effect-TS Error Handling Patterns", "Why Rust Ownership Matters", "React Server Components Explained".`,
   ];
 
   return parts.filter(Boolean).join("\n");
@@ -98,6 +101,7 @@ export const makeBookmarkAnalyzerService = Effect.gen(function* () {
         category: validated.category as BookmarkCategory,
         suggestedPath: validated.suggestedPath,
         tags: validated.tags,
+        title: validated.title,
         ...(validated.summary !== undefined && { summary: validated.summary }),
       } as AnalyzedBookmark;
     });

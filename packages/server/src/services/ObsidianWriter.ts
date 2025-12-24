@@ -57,12 +57,8 @@ const generateFrontmatter = (bookmark: AnalyzedBookmark): string => {
 const generateContent = (bookmark: AnalyzedBookmark): string => {
   const parts: string[] = [];
 
-  // Title
-  if (bookmark.category === "thread") {
-    parts.push(`# Thread by @${bookmark.raw.authorHandle}`);
-  } else {
-    parts.push(`# Tweet by @${bookmark.raw.authorHandle}`);
-  }
+  // Title - use LLM-generated title
+  parts.push(`# ${bookmark.title}`);
   parts.push("");
 
   // Original text
@@ -189,8 +185,8 @@ export const makeObsidianWriterService = Effect.gen(function* () {
         } satisfies ObsidianNote;
       }
 
-      // Generate filename from tweet text or ID
-      const slug = slugify(bookmark.raw.text) || bookmark.raw.tweetId;
+      // Generate filename from LLM-generated title, falling back to tweet text or ID
+      const slug = slugify(bookmark.title) || slugify(bookmark.raw.text) || bookmark.raw.tweetId;
       const filename = `${slug}.md`;
 
       // Build full path - flat structure, no subfolders
