@@ -290,6 +290,6 @@ bun run --filter extension build  # build extension
 4. ~~Build Obsidian writer + verify output~~ Done
 5. ~~Build extension scraper~~ Done
 6. ~~Wire it all together~~ Done
-7. Add placeholder icons to extension (16/48/128px)
+7. ~~Add placeholder icons to extension (16/48/128px)~~ Done
 8. End-to-end test with real bookmarks
 9. Phase 3 enhancements (link expansion, thread handling, etc.)
