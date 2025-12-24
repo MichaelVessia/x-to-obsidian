@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "description": "Scrape X/Twitter bookmarks and save them to Obsidian vault",
   "permissions": ["activeTab", "storage"],
-  "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
+  "host_permissions": ["https://x.com/*", "https://twitter.com/*", "http://localhost:3000/*"],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -19,8 +19,9 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://x.com/i/bookmarks*", "https://twitter.com/i/bookmarks*"],
-      "js": ["content.js"]
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"]
     }
   ],
   "icons": {

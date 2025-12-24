@@ -1,5 +1,5 @@
 // Content script for scraping X/Twitter bookmarks
-// Injected into x.com/i/bookmarks
+// Injected into x.com pages
 
 import type { RawBookmark, Media, Link } from "@x-to-obsidian/core";
 
@@ -546,6 +546,150 @@ chrome.runtime.onMessage.addListener(
     return false;
   }
 );
+
+// ============================================
+// INLINE SEND BUTTON - Works on any X page
+// ============================================
+
+// Obsidian icon SVG (simplified gem shape)
+const OBSIDIAN_ICON = `<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <path d="M382.3 475.6c-3.1 23.4-26 41.6-48.7 35.3-32.4-8.9-69.9-22.8-103.6-25.4l-51.7-4a34 34 0 0 1-22-10.2l-89-91.7a34 34 0 0 1-6.7-37.7s55-121 57.1-127.3c2-6.3 9.6-61.2 14-90.6 1.2-7.9 5-15 11-20.3L248 8.9a34.1 34.1 0 0 1 49.6 4.3L386 125.6a37 37 0 0 1 7.6 22.4c0 21.3 1.8 65 13.6 93.2 11.5 27.3 32.5 57 43.5 71.5a17.3 17.3 0 0 1 1.3 19.2 1494 1494 0 0 1-44.8 70.6c-15 22.3-21.9 49.9-25 73.1z"/>
+</svg>`;
+
+/**
+ * Send a single tweet to the server via background script
+ */
+const sendTweetToServer = (bookmark: RawBookmark): Promise<{ success: boolean; error?: string }> => {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(
+      { type: "SEND_TO_OBSIDIAN", bookmark },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({ success: false, error: chrome.runtime.lastError.message || "Unknown error" });
+        } else {
+          resolve(response || { success: false, error: "No response" });
+        }
+      }
+    );
+  });
+};
+
+/**
+ * Handle click on the send-to-obsidian button
+ */
+const handleSendClick = async (btn: HTMLButtonElement, tweetEl: Element) => {
+  // Prevent double-clicks
+  if (btn.classList.contains("sending")) return;
+
+  const bookmark = scrapeTweet(tweetEl);
+  if (!bookmark) {
+    btn.classList.add("error");
+    btn.setAttribute("data-tooltip", "Failed to parse tweet");
+    setTimeout(() => {
+      btn.classList.remove("error");
+      btn.setAttribute("data-tooltip", "Send to Obsidian");
+    }, 2000);
+    return;
+  }
+
+  // Set sending state
+  btn.classList.add("sending");
+  btn.setAttribute("data-tooltip", "Sending...");
+
+  const result = await sendTweetToServer(bookmark);
+
+  btn.classList.remove("sending");
+
+  if (result.success) {
+    btn.classList.add("success");
+    btn.setAttribute("data-tooltip", "Sent!");
+    setTimeout(() => {
+      btn.classList.remove("success");
+      btn.setAttribute("data-tooltip", "Send to Obsidian");
+    }, 2000);
+  } else {
+    btn.classList.add("error");
+    btn.setAttribute("data-tooltip", result.error || "Failed");
+    setTimeout(() => {
+      btn.classList.remove("error");
+      btn.setAttribute("data-tooltip", "Send to Obsidian");
+    }, 3000);
+  }
+};
+
+/**
+ * Create the send-to-obsidian button element
+ */
+const createSendButton = (): HTMLButtonElement => {
+  const btn = document.createElement("button");
+  btn.className = "x-to-obsidian-btn";
+  btn.innerHTML = OBSIDIAN_ICON;
+  btn.setAttribute("data-tooltip", "Send to Obsidian");
+  btn.setAttribute("aria-label", "Send to Obsidian");
+  return btn;
+};
+
+/**
+ * Inject send button into a tweet's action bar
+ */
+const injectSendButton = (tweetArticle: Element) => {
+  // Skip if already injected
+  if (tweetArticle.querySelector(".x-to-obsidian-btn")) return;
+
+  // Find the action bar (contains reply, retweet, like, etc.)
+  const actionBar = tweetArticle.querySelector('[role="group"]');
+  if (!actionBar) return;
+
+  const btn = createSendButton();
+  
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleSendClick(btn, tweetArticle);
+  });
+
+  actionBar.appendChild(btn);
+};
+
+/**
+ * Process all visible tweets and inject buttons
+ */
+const processVisibleTweets = () => {
+  const tweets = document.querySelectorAll(SELECTORS.tweet);
+  tweets.forEach(injectSendButton);
+};
+
+// MutationObserver to handle dynamically loaded tweets
+const observer = new MutationObserver((mutations) => {
+  // Debounce: only process if there are actual added nodes
+  let hasNewNodes = false;
+  for (const mutation of mutations) {
+    if (mutation.addedNodes.length > 0) {
+      hasNewNodes = true;
+      break;
+    }
+  }
+  
+  if (hasNewNodes) {
+    processVisibleTweets();
+  }
+});
+
+// Start observing when DOM is ready
+const startObserver = () => {
+  processVisibleTweets(); // Process existing tweets
+  observer.observe(document.body, { 
+    childList: true, 
+    subtree: true 
+  });
+};
+
+// Initialize based on document state
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startObserver);
+} else {
+  startObserver();
+}
 
 // Signal that content script is loaded
 console.log("[x-to-obsidian] Content script loaded on", window.location.href);

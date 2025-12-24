@@ -1,0 +1,75 @@
+/* Obsidian send button - injected into tweet action bar */
+.x-to-obsidian-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+  padding: 0;
+  margin-left: 4px;
+}
+
+.x-to-obsidian-btn:hover {
+  background-color: rgba(139, 92, 246, 0.1);
+}
+
+.x-to-obsidian-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: rgb(113, 118, 123);
+  transition: fill 0.2s ease;
+}
+
+.x-to-obsidian-btn:hover svg {
+  fill: rgb(139, 92, 246);
+}
+
+/* States */
+.x-to-obsidian-btn.sending svg {
+  fill: rgb(139, 92, 246);
+  animation: pulse 1s infinite;
+}
+
+.x-to-obsidian-btn.success svg {
+  fill: rgb(0, 186, 124);
+}
+
+.x-to-obsidian-btn.error svg {
+  fill: rgb(244, 33, 46);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Tooltip */
+.x-to-obsidian-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: rgb(91, 112, 131);
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.x-to-obsidian-btn:hover::after {
+  opacity: 1;
+}

@@ -7,7 +7,7 @@
     "build:background": "bun build src/background.ts --outdir=dist --target=browser",
     "build:content": "bun build src/content.ts --outdir=dist --target=browser",
     "build:popup": "bun build src/popup/popup.ts --outdir=dist/popup --target=browser",
-    "build:copy": "cp manifest.json dist/ && cp -r src/popup/popup.html dist/popup/ && cp -r src/icons dist/"
+    "build:copy": "cp manifest.json dist/ && cp -r src/popup/popup.html dist/popup/ && cp -r src/icons dist/ && cp src/content.css dist/"
   },
   "dependencies": {
     "@x-to-obsidian/core": "workspace:*"
