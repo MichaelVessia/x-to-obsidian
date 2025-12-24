@@ -2,50 +2,24 @@
 
 Export your X/Twitter bookmarks to your Obsidian vault with AI-powered categorization and tagging.
 
-```
-                                    x-to-obsidian
-                                         
-    +------------------+                              +------------------+
-    |                  |                              |                  |
-    |   X / Twitter    |                              |  Obsidian Vault  |
-    |   Bookmarks      |                              |                  |
-    |                  |                              |  ~/vault/        |
-    +--------+---------+                              |    Bookmarks/    |
-             |                                        |      tweet1.md   |
-             | DOM scraping                           |      tweet2.md   |
-             v                                        |      ...         |
-    +------------------+      POST /api/bookmarks     +--------+---------+
-    |                  | ---------------------------> |        ^         |
-    | Chrome Extension |     { bookmarks: [...] }     |        |         |
-    |                  |                              |        | fs.write
-    | - content.ts     | <--------------------------- |        |         |
-    | - popup          |     { results: [...] }       +--------+---------+
-    |                  |                              |                  |
-    +------------------+                              |  Bun Server      |
-                                                      |  (Effect-TS)     |
-                                                      |                  |
-                                                      |  +------------+  |
-                                                      |  | LLM Service|  |
-                                                      |  | (Claude or |  |
-                                                      |  |  Gemini)   |  |
-                                                      |  +------------+  |
-                                                      |        |         |
-                                                      |        v         |
-                                                      |  +------------+  |
-                                                      |  | Analyzer   |  |
-                                                      |  | - category |  |
-                                                      |  | - tags     |  |
-                                                      |  | - summary  |  |
-                                                      |  +------------+  |
-                                                      |        |         |
-                                                      |        v         |
-                                                      |  +------------+  |
-                                                      |  | Writer     |  |
-                                                      |  | - markdown |  |
-                                                      |  | - dedup    |  |
-                                                      |  +------------+  |
-                                                      |                  |
-                                                      +------------------+
+```mermaid
+graph LR
+    A[X / Twitter<br/>Bookmarks] -->|DOM scraping| B[Chrome Extension]
+    B -->|POST /api/bookmarks<br/>RawBookmark[]| C[Bun Server<br/>Effect-TS]
+    C -->|results[]| B
+    
+    C --> D[LLM Service<br/>Claude/Gemini]
+    D --> E[BookmarkAnalyzer<br/>category, tags, summary]
+    E --> F[ObsidianWriter<br/>markdown, dedup]
+    F -->|fs.write| G[Obsidian Vault<br/>Bookmarks/]
+    
+    style A fill:#1DA1F2,color:#fff
+    style B fill:#4A90E2,color:#fff
+    style C fill:#2C3E50,color:#fff
+    style D fill:#27AE60,color:#fff
+    style E fill:#27AE60,color:#fff
+    style F fill:#27AE60,color:#fff
+    style G fill:#8E44AD,color:#fff
 ```
 
 ## What It Does
@@ -101,54 +75,40 @@ x-to-obsidian/
 
 ## Data Flow
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Chrome Extension                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  1. User clicks "Scrape" in popup                                   │
-│                    │                                                 │
-│                    v                                                 │
-│  2. Content script parses DOM:                                       │
-│     - Tweet text, author, timestamp                                  │
-│     - Media (images, videos, GIFs)                                   │
-│     - External links                                                 │
-│     - Quoted tweets                                                  │
-│     - Thread detection                                               │
-│                    │                                                 │
-│                    v                                                 │
-│  3. Sends RawBookmark[] to server                                   │
-│                                                                      │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-                               v
-┌─────────────────────────────────────────────────────────────────────┐
-│                          Bun Server                                  │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                      │
-│  4. Validate request with Effect Schema                              │
-│                    │                                                 │
-│                    v                                                 │
-│  5. For each bookmark:                                               │
-│     ┌──────────────────────────────────────────────┐                │
-│     │  a. Check dedup cache (skip if exists)        │                │
-│     │              │                                │                │
-│     │              v                                │                │
-│     │  b. LLMService.analyze(prompt)                │                │
-│     │     - Sends tweet content to Claude/Gemini    │                │
-│     │     - Returns: category, tags, summary        │                │
-│     │              │                                │                │
-│     │              v                                │                │
-│     │  c. ObsidianWriter.write(analyzed)            │                │
-│     │     - Generate frontmatter (YAML)             │                │
-│     │     - Generate markdown body                  │                │
-│     │     - Write to vault                          │                │
-│     └──────────────────────────────────────────────┘                │
-│                    │                                                 │
-│                    v                                                 │
-│  6. Return results to extension                                      │
-│                                                                      │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    actor User
+    participant Popup as Extension Popup
+    participant ContentScript as Content Script
+    participant Server as Bun Server
+    participant LLM as LLM Service
+    participant Writer as ObsidianWriter
+    participant Vault as Obsidian Vault
+
+    User->>Popup: Clicks "Scrape"
+    Popup->>ContentScript: Trigger scraping
+    ContentScript->>ContentScript: Parse DOM<br/>(text, author, media, links, etc)
+    ContentScript->>Server: POST /api/bookmarks<br/>RawBookmark[]
+    
+    Server->>Server: Validate with Effect Schema
+    
+    loop For each bookmark
+        Server->>Server: Check dedup cache
+        alt Already exists
+            Server->>Server: Skip bookmark
+        else New bookmark
+            Server->>LLM: Analyze bookmark content
+            LLM->>LLM: Generate category, tags, summary
+            LLM-->>Server: Return analysis
+            Server->>Writer: Generate markdown
+            Writer->>Writer: Build YAML frontmatter
+            Writer->>Writer: Format markdown body
+            Writer->>Vault: Write file to vault
+        end
+    end
+    
+    Server-->>Popup: Return results
+    Popup-->>User: Display completion status
 ```
 
 ## Output Example
