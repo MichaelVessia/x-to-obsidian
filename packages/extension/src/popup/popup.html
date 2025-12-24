@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X to Obsidian</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #15202b;
+      color: #e7e9ea;
+      padding: 16px;
+    }
+    
+    h1 {
+      font-size: 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .section {
+      margin-bottom: 16px;
+    }
+    
+    label {
+      display: block;
+      font-size: 12px;
+      color: #8b98a5;
+      margin-bottom: 4px;
+    }
+    
+    input[type="text"] {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #38444d;
+      border-radius: 4px;
+      background: #192734;
+      color: #e7e9ea;
+      font-size: 14px;
+    }
+    
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #1d9bf0;
+    }
+    
+    button {
+      width: 100%;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 9999px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    
+    button.primary {
+      background: #1d9bf0;
+      color: white;
+    }
+    
+    button.primary:hover {
+      background: #1a8cd8;
+    }
+    
+    button.primary:disabled {
+      background: #1d9bf0;
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    button.secondary {
+      background: transparent;
+      color: #1d9bf0;
+      border: 1px solid #1d9bf0;
+      margin-top: 8px;
+    }
+    
+    button.secondary:hover {
+      background: rgba(29, 155, 240, 0.1);
+    }
+    
+    .status {
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 12px;
+    }
+    
+    .status.info {
+      background: rgba(29, 155, 240, 0.1);
+      color: #1d9bf0;
+    }
+    
+    .status.success {
+      background: rgba(0, 186, 124, 0.1);
+      color: #00ba7c;
+    }
+    
+    .status.error {
+      background: rgba(244, 33, 46, 0.1);
+      color: #f4212e;
+    }
+    
+    .status.hidden {
+      display: none;
+    }
+    
+    .progress {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #8b98a5;
+    }
+    
+    .warning {
+      font-size: 12px;
+      color: #f7931a;
+      margin-top: 8px;
+      padding: 8px;
+      background: rgba(247, 147, 26, 0.1);
+      border-radius: 4px;
+    }
+    
+    .warning.hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>X to Obsidian</h1>
+  
+  <div class="section">
+    <label for="serverUrl">Server URL</label>
+    <input type="text" id="serverUrl" placeholder="http://localhost:3000" value="http://localhost:3000">
+  </div>
+  
+  <div class="section">
+    <button id="scrapeVisible" class="primary">Scrape Visible Bookmarks</button>
+    <button id="scrapeAll" class="secondary">Scrape All Bookmarks (scroll)</button>
+  </div>
+  
+  <div id="notOnBookmarks" class="warning hidden">
+    Navigate to x.com/i/bookmarks to scrape bookmarks.
+  </div>
+  
+  <div id="status" class="status hidden"></div>
+  <div id="progress" class="progress"></div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

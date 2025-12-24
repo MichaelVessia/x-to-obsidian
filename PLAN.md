@@ -69,12 +69,12 @@ x-to-obsidian/
 ## Phase 1: Core & Server Foundation
 
 ### 1.1 Project Scaffold
-- [ ] Init monorepo with Bun workspaces
-- [ ] Setup tsconfig, biome
-- [ ] Create packages/core, packages/server, packages/extension
+- [x] Init monorepo with Bun workspaces
+- [x] Setup tsconfig, biome
+- [x] Create packages/core, packages/server, packages/extension
 
 ### 1.2 Core Package - Schemas
-- [ ] Define `RawBookmark` schema (what extension sends)
+- [x] Define `RawBookmark` schema (what extension sends)
   ```typescript
   // What the extension scrapes from X DOM
   interface RawBookmark {
@@ -99,7 +99,7 @@ x-to-obsidian/
   }
   ```
 
-- [ ] Define `AnalyzedBookmark` schema (after Claude processing)
+- [x] Define `AnalyzedBookmark` schema (after Claude processing)
   ```typescript
   interface AnalyzedBookmark {
     raw: RawBookmark
@@ -111,7 +111,7 @@ x-to-obsidian/
   }
   ```
 
-- [ ] Define `ObsidianNote` schema (final output)
+- [x] Define `ObsidianNote` schema (final output)
   ```typescript
   interface ObsidianNote {
     path: string                 // relative to vault root
@@ -121,68 +121,68 @@ x-to-obsidian/
   ```
 
 ### 1.3 Server - Claude Service
-- [ ] Create `ClaudeService` Effect service
+- [x] Create `ClaudeService` Effect service
   ```typescript
   interface ClaudeService {
     analyze: (prompt: string) => Effect<string, ClaudeError>
   }
   ```
-- [ ] Implement subprocess spawn with `claude --print --output-format json`
-- [ ] Handle timeouts, parse JSON response
-- [ ] Add retry logic with Effect
+- [x] Implement subprocess spawn with `claude --print --output-format json`
+- [x] Handle timeouts, parse JSON response
+- [x] Add retry logic with Effect
 
 ### 1.4 Server - Bookmark Analyzer
-- [ ] Create `BookmarkAnalyzerService`
-- [ ] Build prompt template for Claude:
+- [x] Create `BookmarkAnalyzerService`
+- [x] Build prompt template for Claude:
   - Classify bookmark type
   - Suggest folder path based on content
   - Generate tags
   - Summarize threads
   - For links: decide if we need to fetch content
-- [ ] Parse Claude's structured response
+- [x] Parse Claude's structured response
 
 ### 1.5 Server - Obsidian Writer
-- [ ] Create `ObsidianWriterService`
-- [ ] Configure vault path (env var or config file)
-- [ ] Generate markdown with YAML frontmatter
-- [ ] Handle file naming (slugify tweet text or use ID)
-- [ ] Create folders if needed
-- [ ] Handle duplicates (skip or update)
+- [x] Create `ObsidianWriterService`
+- [x] Configure vault path (env var or config file)
+- [x] Generate markdown with YAML frontmatter
+- [x] Handle file naming (slugify tweet text or use ID)
+- [x] Create folders if needed
+- [x] Handle duplicates (skip or update)
 
 ### 1.6 Server - HTTP Endpoint
-- [ ] Setup Bun.serve with Effect
-- [ ] `POST /api/bookmarks` - receive array of RawBookmark
-- [ ] Process each bookmark through pipeline
-- [ ] Return success/failure status per bookmark
+- [x] Setup Bun.serve with Effect
+- [x] `POST /api/bookmarks` - receive array of RawBookmark
+- [x] Process each bookmark through pipeline
+- [x] Return success/failure status per bookmark
 
 ## Phase 2: Chrome Extension
 
 ### 2.1 Extension Scaffold
-- [ ] Create manifest.json (Manifest V3)
-- [ ] Setup build with Bun (bundle for extension)
-- [ ] Permissions: `activeTab`, `storage`, host permission for x.com
+- [x] Create manifest.json (Manifest V3)
+- [x] Setup build with Bun (bundle for extension)
+- [x] Permissions: `activeTab`, `storage`, host permission for x.com
 
 ### 2.2 Content Script - Scraper
-- [ ] Inject into x.com/i/bookmarks
-- [ ] Parse tweet DOM structure
+- [x] Inject into x.com/i/bookmarks
+- [x] Parse tweet DOM structure
   - Tweet text, author, timestamp
   - Media (images, videos)
   - Quoted tweets
   - External links
-- [ ] Detect threads (self-replies)
-- [ ] Handle infinite scroll / pagination
+- [x] Detect threads (self-replies)
+- [x] Handle infinite scroll / pagination
 
 ### 2.3 Popup UI
-- [ ] Simple popup with:
+- [x] Simple popup with:
   - Server URL config (default localhost:3000)
   - "Scrape Current Page" button
   - "Scrape All Bookmarks" button (scroll + scrape)
   - Status/progress indicator
 
 ### 2.4 Background Service Worker
-- [ ] Receive scraped bookmarks from content script
-- [ ] POST to server endpoint
-- [ ] Handle response, show notification
+- [x] Receive scraped bookmarks from content script
+- [x] POST to server endpoint
+- [x] Handle response, show notification
 
 ## Phase 3: Enhancements
 
@@ -284,9 +284,12 @@ bun run --filter extension build  # build extension
 
 ## Next Steps
 
-1. Create monorepo scaffold
-2. Implement core schemas
-3. Build Claude service + test with hardcoded bookmark
-4. Build Obsidian writer + verify output
-5. Build extension scraper
-6. Wire it all together
+1. ~~Create monorepo scaffold~~ Done
+2. ~~Implement core schemas~~ Done
+3. ~~Build Claude service + test with hardcoded bookmark~~ Done
+4. ~~Build Obsidian writer + verify output~~ Done
+5. ~~Build extension scraper~~ Done
+6. ~~Wire it all together~~ Done
+7. Add placeholder icons to extension (16/48/128px)
+8. End-to-end test with real bookmarks
+9. Phase 3 enhancements (link expansion, thread handling, etc.)

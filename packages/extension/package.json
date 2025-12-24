@@ -3,7 +3,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "bun build src/background.ts src/content.ts src/popup/popup.ts --outdir=dist --splitting"
+    "build": "bun run build:background && bun run build:content && bun run build:popup && bun run build:copy",
+    "build:background": "bun build src/background.ts --outdir=dist --target=browser",
+    "build:content": "bun build src/content.ts --outdir=dist --target=browser",
+    "build:popup": "bun build src/popup/popup.ts --outdir=dist/popup --target=browser",
+    "build:copy": "cp manifest.json dist/ && cp -r src/popup/popup.html dist/popup/ && cp -r icons dist/ 2>/dev/null || mkdir -p dist/icons"
   },
   "dependencies": {
     "@x-to-obsidian/core": "workspace:*"
