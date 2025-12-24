@@ -5,6 +5,11 @@ import type { RawBookmark } from "@x-to-obsidian/core";
 interface ScrapeResultMessage {
   type: "SCRAPE_RESULT";
   bookmarks: RawBookmark[];
+  unbookmarkStats?: {
+    success: number;
+    notFound: number;
+    failed: number;
+  };
   error?: string;
 }
 
@@ -112,7 +117,18 @@ const scrapeAndSend = async (scrapeAll: boolean) => {
     
     await sendToServer(bookmarks);
     
-    setStatus(`Successfully processed ${bookmarks.length} bookmarks!`, "success");
+    // Build success message with unbookmark stats if available
+    let successMsg = `Successfully processed ${bookmarks.length} bookmarks!`;
+    if (response.unbookmarkStats) {
+      const { success, failed } = response.unbookmarkStats;
+      if (success > 0 || failed > 0) {
+        successMsg += ` Unbookmarked: ${success}`;
+        if (failed > 0) {
+          successMsg += ` (${failed} failed)`;
+        }
+      }
+    }
+    setStatus(successMsg, "success");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     

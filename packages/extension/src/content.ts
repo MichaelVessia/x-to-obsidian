@@ -256,18 +256,110 @@ const scrapeTweet = (tweetEl: Element): RawBookmark | null => {
   }
 };
 
+// Rate limiting for unbookmark requests
+const UNBOOKMARK_DELAY_MS = 2000; // 2 seconds between unbookmarks to avoid 429
+
 /**
- * Click the unbookmark button on a tweet element
+ * Find a tweet element by its ID (re-queries DOM for fresh reference)
  */
-const unbookmarkTweet = async (tweetEl: Element): Promise<boolean> => {
-  const bookmarkBtn = tweetEl.querySelector(SELECTORS.bookmarkButton) as HTMLElement | null;
-  if (bookmarkBtn) {
-    bookmarkBtn.click();
-    // Small delay to let X process the unbookmark
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    return true;
+const findTweetById = (tweetId: string): Element | null => {
+  const tweets = document.querySelectorAll(SELECTORS.tweet);
+  for (const tweet of tweets) {
+    const meta = parseTweetMeta(tweet);
+    if (meta.tweetId === tweetId) {
+      return tweet;
+    }
+  }
+  return null;
+};
+
+/**
+ * Wait for a condition with timeout
+ */
+const waitFor = async (
+  condition: () => boolean,
+  timeoutMs: number,
+  pollMs = 50
+): Promise<boolean> => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (condition()) return true;
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
   return false;
+};
+
+/**
+ * Click the unbookmark button on a tweet element
+ * Returns: "success" | "not_found" | "failed"
+ */
+const unbookmarkTweet = async (
+  tweetEl: Element,
+  tweetId: string,
+  retries = 2
+): Promise<"success" | "not_found" | "failed"> => {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    // Re-query the DOM for a fresh reference on retries
+    const currentTweetEl = attempt === 0 ? tweetEl : findTweetById(tweetId);
+    
+    if (!currentTweetEl) {
+      // Tweet no longer in DOM - might have been removed by X after unbookmark
+      // Check if that's because unbookmark succeeded
+      console.log(`[x-to-obsidian] Tweet ${tweetId} not in DOM (may have been unbookmarked)`);
+      return "success"; // Assume success if tweet disappeared
+    }
+
+    const bookmarkBtn = currentTweetEl.querySelector(
+      SELECTORS.bookmarkButton
+    ) as HTMLElement | null;
+
+    if (!bookmarkBtn) {
+      // No removeBookmark button - either already unbookmarked or button not rendered
+      console.warn(
+        `[x-to-obsidian] Attempt ${attempt + 1}: Unbookmark button not found for tweet ${tweetId}`
+      );
+      
+      if (attempt < retries) {
+        // Scroll tweet into view and wait for button to render
+        currentTweetEl.scrollIntoView({ block: "center", behavior: "smooth" });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        continue;
+      }
+      return "not_found";
+    }
+
+    // Scroll button into view to ensure it's interactable
+    bookmarkBtn.scrollIntoView({ block: "center", behavior: "smooth" });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    // Click the button
+    bookmarkBtn.click();
+    console.log(`[x-to-obsidian] Clicked unbookmark for tweet ${tweetId}`);
+
+    // Wait for X to process - verify by checking if button changes or tweet removed
+    const unbookmarked = await waitFor(() => {
+      // Check if tweet was removed from DOM
+      const stillExists = findTweetById(tweetId);
+      if (!stillExists) return true;
+
+      // Check if bookmark button changed (no longer "removeBookmark")
+      const btn = stillExists.querySelector(SELECTORS.bookmarkButton);
+      return !btn;
+    }, 1500);
+
+    if (unbookmarked) {
+      console.log(`[x-to-obsidian] Successfully unbookmarked tweet ${tweetId}`);
+      // Rate limit: wait before allowing next unbookmark to avoid 429
+      await new Promise((resolve) => setTimeout(resolve, UNBOOKMARK_DELAY_MS));
+      return "success";
+    }
+
+    console.warn(
+      `[x-to-obsidian] Attempt ${attempt + 1}: Unbookmark may not have worked for tweet ${tweetId}`
+    );
+  }
+
+  return "failed";
 };
 
 
@@ -276,66 +368,79 @@ interface ScrapeOptions {
   unbookmark?: boolean | undefined;
 }
 
+interface ScrapeResult {
+  bookmarks: RawBookmark[];
+  unbookmarkStats: {
+    success: number;
+    notFound: number;
+    failed: number;
+  };
+}
+
 /**
- * Scrape visible tweets and optionally unbookmark them
+ * Scrape visible tweets and optionally unbookmark them immediately after scraping each
  */
 const scrapeVisibleTweetsWithOptions = async (
   options: ScrapeOptions = {}
-): Promise<{ bookmarks: RawBookmark[]; tweetElements: Map<string, Element> }> => {
+): Promise<ScrapeResult> => {
   const tweets = document.querySelectorAll(SELECTORS.tweet);
   const bookmarks: RawBookmark[] = [];
-  const tweetElements = new Map<string, Element>();
   const seenIds = new Set<string>();
+  const unbookmarkStats = { success: 0, notFound: 0, failed: 0 };
 
   for (const tweet of tweets) {
     const bookmark = scrapeTweet(tweet);
     if (bookmark && !seenIds.has(bookmark.tweetId)) {
       seenIds.add(bookmark.tweetId);
       bookmarks.push(bookmark);
-      tweetElements.set(bookmark.tweetId, tweet);
+
+      // Unbookmark immediately after scraping (before any scroll/DOM changes)
+      if (options.unbookmark) {
+        const result = await unbookmarkTweet(tweet, bookmark.tweetId);
+        unbookmarkStats[result === "success" ? "success" : result === "not_found" ? "notFound" : "failed"]++;
+      }
     }
   }
 
-  return { bookmarks, tweetElements };
+  return { bookmarks, unbookmarkStats };
 };
 
 /**
  * Scroll and scrape all bookmarks (handles infinite scroll)
+ * Unbookmarking happens immediately after scraping each tweet, before scrolling
  */
 const scrapeAllBookmarks = async (
-  onProgress?: (count: number) => void,
+  onProgress?: (count: number, stats?: ScrapeResult["unbookmarkStats"]) => void,
   options: ScrapeOptions = {}
-): Promise<RawBookmark[]> => {
+): Promise<ScrapeResult> => {
   const allBookmarks: RawBookmark[] = [];
   const seenIds = new Set<string>();
+  const totalStats = { success: 0, notFound: 0, failed: 0 };
   let lastHeight = 0;
   let noNewContentCount = 0;
   const maxNoNewContent = 3;
 
   while (noNewContentCount < maxNoNewContent) {
-    // Scrape current visible tweets
-    const { bookmarks: visible, tweetElements } = await scrapeVisibleTweetsWithOptions(options);
+    // Scrape current visible tweets (unbookmarking happens inside this function)
+    const { bookmarks: visible, unbookmarkStats } = await scrapeVisibleTweetsWithOptions(options);
     let newCount = 0;
+
+    // Aggregate stats
+    totalStats.success += unbookmarkStats.success;
+    totalStats.notFound += unbookmarkStats.notFound;
+    totalStats.failed += unbookmarkStats.failed;
 
     for (const bookmark of visible) {
       if (!seenIds.has(bookmark.tweetId)) {
         seenIds.add(bookmark.tweetId);
         allBookmarks.push(bookmark);
         newCount++;
-
-        // Unbookmark after scraping if requested
-        if (options.unbookmark) {
-          const tweetEl = tweetElements.get(bookmark.tweetId);
-          if (tweetEl) {
-            await unbookmarkTweet(tweetEl);
-          }
-        }
       }
     }
 
     if (newCount > 0) {
       noNewContentCount = 0;
-      onProgress?.(allBookmarks.length);
+      onProgress?.(allBookmarks.length, totalStats);
     }
 
     // Scroll down
@@ -352,7 +457,7 @@ const scrapeAllBookmarks = async (
     lastHeight = newHeight;
   }
 
-  return allBookmarks;
+  return { bookmarks: allBookmarks, unbookmarkStats: totalStats };
 };
 
 // Message types for communication with popup/background
@@ -374,7 +479,12 @@ interface ScrapeProgressMessage {
 interface ScrapeResultMessage {
   type: "SCRAPE_RESULT";
   bookmarks: RawBookmark[];
-  error?: string;
+  unbookmarkStats?: {
+    success: number;
+    notFound: number;
+    failed: number;
+  } | undefined;
+  error?: string | undefined;
 }
 
 type IncomingMessage = ScrapeVisibleMessage | ScrapeAllMessage;
@@ -389,17 +499,13 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "SCRAPE_VISIBLE") {
       const options = { unbookmark: message.unbookmark };
       scrapeVisibleTweetsWithOptions(options)
-        .then(async ({ bookmarks, tweetElements }) => {
-          // Unbookmark after scraping if requested
-          if (options.unbookmark) {
-            for (const bookmark of bookmarks) {
-              const tweetEl = tweetElements.get(bookmark.tweetId);
-              if (tweetEl) {
-                await unbookmarkTweet(tweetEl);
-              }
-            }
-          }
-          sendResponse({ type: "SCRAPE_RESULT", bookmarks });
+        .then(({ bookmarks, unbookmarkStats }) => {
+          // Unbookmarking already happened inside scrapeVisibleTweetsWithOptions
+          sendResponse({
+            type: "SCRAPE_RESULT",
+            bookmarks,
+            unbookmarkStats: options.unbookmark ? unbookmarkStats : undefined,
+          });
         })
         .catch((error) => {
           sendResponse({
@@ -413,14 +519,19 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SCRAPE_ALL") {
       const options = { unbookmark: message.unbookmark };
-      scrapeAllBookmarks((count) => {
+      scrapeAllBookmarks((count, stats) => {
         chrome.runtime.sendMessage({
           type: "SCRAPE_PROGRESS",
           count,
-        } satisfies ScrapeProgressMessage);
+          unbookmarkStats: stats,
+        } as ScrapeProgressMessage);
       }, options)
-        .then((bookmarks) => {
-          sendResponse({ type: "SCRAPE_RESULT", bookmarks });
+        .then(({ bookmarks, unbookmarkStats }) => {
+          sendResponse({
+            type: "SCRAPE_RESULT",
+            bookmarks,
+            unbookmarkStats: options.unbookmark ? unbookmarkStats : undefined,
+          });
         })
         .catch((error) => {
           sendResponse({
