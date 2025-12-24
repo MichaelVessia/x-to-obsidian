@@ -1,8 +1,11 @@
 import { Effect, Context, Data } from "effect";
-import { mkdir, writeFile, access } from "node:fs/promises";
+import { mkdir, writeFile, access, readdir, readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import type { AnalyzedBookmark, ObsidianNote } from "@x-to-obsidian/core";
 import { appConfig } from "../config.js";
+
+// In-memory cache of processed tweet IDs (loaded from vault on startup)
+let processedTweetIds: Set<string> | null = null;
 
 export class WriterError extends Data.TaggedError("WriterError")<{
   message: string;
@@ -11,6 +14,7 @@ export class WriterError extends Data.TaggedError("WriterError")<{
 
 export interface ObsidianWriterService {
   readonly write: (bookmark: AnalyzedBookmark) => Effect.Effect<ObsidianNote, WriterError>;
+  readonly isDuplicate: (tweetId: string) => Effect.Effect<boolean, WriterError>;
 }
 
 export const ObsidianWriterService = Context.GenericTag<ObsidianWriterService>(
@@ -127,11 +131,64 @@ const fileExists = async (path: string): Promise<boolean> => {
   }
 };
 
+const loadProcessedTweetIds = async (bookmarksDir: string): Promise<Set<string>> => {
+  const ids = new Set<string>();
+  try {
+    const files = await readdir(bookmarksDir);
+    for (const file of files) {
+      if (!file.endsWith(".md")) continue;
+      const content = await readFile(join(bookmarksDir, file), "utf-8");
+      const match = content.match(/tweet_id:\s*"?(\d+)"?/);
+      if (match) {
+        ids.add(match[1]);
+      }
+    }
+  } catch {
+    // Directory might not exist yet
+  }
+  return ids;
+};
+
 export const makeObsidianWriterService = Effect.gen(function* () {
   const config = yield* appConfig;
 
+  const bookmarksDir = join(config.vaultPath, config.bookmarksFolder);
+
+  const ensureCacheLoaded = Effect.gen(function* () {
+    if (processedTweetIds === null) {
+      processedTweetIds = yield* Effect.tryPromise({
+        try: () => loadProcessedTweetIds(bookmarksDir),
+        catch: (error) =>
+          new WriterError({
+            message: "Failed to load processed tweet IDs",
+            cause: error,
+          }),
+      });
+      yield* Effect.logInfo(`Loaded ${processedTweetIds.size} existing tweet IDs`);
+    }
+    return processedTweetIds;
+  });
+
+  const isDuplicate = (tweetId: string): Effect.Effect<boolean, WriterError> =>
+    Effect.gen(function* () {
+      const cache = yield* ensureCacheLoaded;
+      return cache.has(tweetId);
+    });
+
   const write = (bookmark: AnalyzedBookmark): Effect.Effect<ObsidianNote, WriterError> =>
     Effect.gen(function* () {
+      const cache = yield* ensureCacheLoaded;
+
+      // Check for duplicate by tweet ID
+      if (cache.has(bookmark.raw.tweetId)) {
+        yield* Effect.logDebug(`Skipping duplicate: ${bookmark.raw.tweetId}`);
+        return {
+          path: "",
+          frontmatter: {},
+          content: "",
+        } satisfies ObsidianNote;
+      }
+
       // Generate filename from tweet text or ID
       const slug = slugify(bookmark.raw.text) || bookmark.raw.tweetId;
       const filename = `${slug}.md`;
@@ -140,7 +197,7 @@ export const makeObsidianWriterService = Effect.gen(function* () {
       const relativePath = join(config.bookmarksFolder, filename);
       const fullPath = join(config.vaultPath, relativePath);
 
-      // Check for duplicates
+      // Also check file existence (in case file exists but wasn't in cache)
       const exists = yield* Effect.tryPromise({
         try: () => fileExists(fullPath),
         catch: (error) =>
@@ -151,7 +208,8 @@ export const makeObsidianWriterService = Effect.gen(function* () {
       });
 
       if (exists) {
-        // Skip duplicate
+        yield* Effect.logDebug(`File already exists: ${relativePath}`);
+        cache.add(bookmark.raw.tweetId);
         return {
           path: relativePath,
           frontmatter: {},
@@ -184,6 +242,9 @@ export const makeObsidianWriterService = Effect.gen(function* () {
           }),
       });
 
+      // Add to cache
+      cache.add(bookmark.raw.tweetId);
+
       return {
         path: relativePath,
         frontmatter: { source: "x/twitter", tweet_id: bookmark.raw.tweetId },
@@ -191,5 +252,5 @@ export const makeObsidianWriterService = Effect.gen(function* () {
       } satisfies ObsidianNote;
     });
 
-  return ObsidianWriterService.of({ write });
+  return ObsidianWriterService.of({ write, isDuplicate });
 });

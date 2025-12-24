@@ -1,6 +1,6 @@
 import { Effect, Context, Data, Schema } from "effect";
 import type { RawBookmark, AnalyzedBookmark, BookmarkCategory } from "@x-to-obsidian/core";
-import { ClaudeService, ClaudeError } from "./Claude.js";
+import { LLMService, LLMError } from "./LLM.js";
 
 export class AnalyzerError extends Data.TaggedError("AnalyzerError")<{
   message: string;
@@ -17,7 +17,7 @@ const ClaudeResponseSchema = Schema.Struct({
 export interface BookmarkAnalyzerService {
   readonly analyze: (
     bookmark: RawBookmark
-  ) => Effect.Effect<AnalyzedBookmark, AnalyzerError | ClaudeError>;
+  ) => Effect.Effect<AnalyzedBookmark, AnalyzerError | LLMError>;
 }
 
 export const BookmarkAnalyzerService = Context.GenericTag<BookmarkAnalyzerService>(
@@ -60,14 +60,17 @@ const buildPrompt = (bookmark: RawBookmark): string => {
 };
 
 export const makeBookmarkAnalyzerService = Effect.gen(function* () {
-  const claude = yield* ClaudeService;
+  const llm = yield* LLMService;
 
   const analyze = (
     bookmark: RawBookmark
-  ): Effect.Effect<AnalyzedBookmark, AnalyzerError | ClaudeError> =>
+  ): Effect.Effect<AnalyzedBookmark, AnalyzerError | LLMError> =>
     Effect.gen(function* () {
+      yield* Effect.logDebug(`Building prompt for ${bookmark.tweetId}`);
       const prompt = buildPrompt(bookmark);
-      const response = yield* claude.analyze(prompt);
+      yield* Effect.logInfo(`Calling LLM for ${bookmark.tweetId}`);
+      const response = yield* llm.analyze(prompt);
+      yield* Effect.logInfo(`Got LLM response for ${bookmark.tweetId}`);
 
       // Parse JSON response
       const parsed = yield* Effect.try({

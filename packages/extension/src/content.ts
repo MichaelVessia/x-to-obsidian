@@ -21,6 +21,8 @@ const SELECTORS = {
   quoteTweet: '[data-testid="quoteTweet"]',
   // Links in tweet
   cardWrapper: '[data-testid="card.wrapper"]',
+  // Bookmark button (for unbookmarking)
+  bookmarkButton: '[data-testid="removeBookmark"]',
 };
 
 /**
@@ -255,29 +257,54 @@ const scrapeTweet = (tweetEl: Element): RawBookmark | null => {
 };
 
 /**
- * Scrape all visible tweets on the page
+ * Click the unbookmark button on a tweet element
  */
-const scrapeVisibleTweets = (): RawBookmark[] => {
+const unbookmarkTweet = async (tweetEl: Element): Promise<boolean> => {
+  const bookmarkBtn = tweetEl.querySelector(SELECTORS.bookmarkButton) as HTMLElement | null;
+  if (bookmarkBtn) {
+    bookmarkBtn.click();
+    // Small delay to let X process the unbookmark
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return true;
+  }
+  return false;
+};
+
+
+
+interface ScrapeOptions {
+  unbookmark?: boolean | undefined;
+}
+
+/**
+ * Scrape visible tweets and optionally unbookmark them
+ */
+const scrapeVisibleTweetsWithOptions = async (
+  options: ScrapeOptions = {}
+): Promise<{ bookmarks: RawBookmark[]; tweetElements: Map<string, Element> }> => {
   const tweets = document.querySelectorAll(SELECTORS.tweet);
   const bookmarks: RawBookmark[] = [];
+  const tweetElements = new Map<string, Element>();
   const seenIds = new Set<string>();
 
-  tweets.forEach((tweet) => {
+  for (const tweet of tweets) {
     const bookmark = scrapeTweet(tweet);
     if (bookmark && !seenIds.has(bookmark.tweetId)) {
       seenIds.add(bookmark.tweetId);
       bookmarks.push(bookmark);
+      tweetElements.set(bookmark.tweetId, tweet);
     }
-  });
+  }
 
-  return bookmarks;
+  return { bookmarks, tweetElements };
 };
 
 /**
  * Scroll and scrape all bookmarks (handles infinite scroll)
  */
 const scrapeAllBookmarks = async (
-  onProgress?: (count: number) => void
+  onProgress?: (count: number) => void,
+  options: ScrapeOptions = {}
 ): Promise<RawBookmark[]> => {
   const allBookmarks: RawBookmark[] = [];
   const seenIds = new Set<string>();
@@ -287,16 +314,24 @@ const scrapeAllBookmarks = async (
 
   while (noNewContentCount < maxNoNewContent) {
     // Scrape current visible tweets
-    const visible = scrapeVisibleTweets();
+    const { bookmarks: visible, tweetElements } = await scrapeVisibleTweetsWithOptions(options);
     let newCount = 0;
 
-    visible.forEach((bookmark) => {
+    for (const bookmark of visible) {
       if (!seenIds.has(bookmark.tweetId)) {
         seenIds.add(bookmark.tweetId);
         allBookmarks.push(bookmark);
         newCount++;
+
+        // Unbookmark after scraping if requested
+        if (options.unbookmark) {
+          const tweetEl = tweetElements.get(bookmark.tweetId);
+          if (tweetEl) {
+            await unbookmarkTweet(tweetEl);
+          }
+        }
       }
-    });
+    }
 
     if (newCount > 0) {
       noNewContentCount = 0;
@@ -323,10 +358,12 @@ const scrapeAllBookmarks = async (
 // Message types for communication with popup/background
 interface ScrapeVisibleMessage {
   type: "SCRAPE_VISIBLE";
+  unbookmark?: boolean;
 }
 
 interface ScrapeAllMessage {
   type: "SCRAPE_ALL";
+  unbookmark?: boolean;
 }
 
 interface ScrapeProgressMessage {
@@ -350,26 +387,38 @@ chrome.runtime.onMessage.addListener(
     sendResponse: (response: ScrapeResultMessage | ScrapeProgressMessage) => void
   ) => {
     if (message.type === "SCRAPE_VISIBLE") {
-      try {
-        const bookmarks = scrapeVisibleTweets();
-        sendResponse({ type: "SCRAPE_RESULT", bookmarks });
-      } catch (error) {
-        sendResponse({
-          type: "SCRAPE_RESULT",
-          bookmarks: [],
-          error: error instanceof Error ? error.message : "Unknown error",
+      const options = { unbookmark: message.unbookmark };
+      scrapeVisibleTweetsWithOptions(options)
+        .then(async ({ bookmarks, tweetElements }) => {
+          // Unbookmark after scraping if requested
+          if (options.unbookmark) {
+            for (const bookmark of bookmarks) {
+              const tweetEl = tweetElements.get(bookmark.tweetId);
+              if (tweetEl) {
+                await unbookmarkTweet(tweetEl);
+              }
+            }
+          }
+          sendResponse({ type: "SCRAPE_RESULT", bookmarks });
+        })
+        .catch((error) => {
+          sendResponse({
+            type: "SCRAPE_RESULT",
+            bookmarks: [],
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
         });
-      }
       return true;
     }
 
     if (message.type === "SCRAPE_ALL") {
+      const options = { unbookmark: message.unbookmark };
       scrapeAllBookmarks((count) => {
         chrome.runtime.sendMessage({
           type: "SCRAPE_PROGRESS",
           count,
         } satisfies ScrapeProgressMessage);
-      })
+      }, options)
         .then((bookmarks) => {
           sendResponse({ type: "SCRAPE_RESULT", bookmarks });
         })

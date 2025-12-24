@@ -1,7 +1,10 @@
-import { Effect } from "effect";
+import { Effect, Logger, LogLevel, Layer } from "effect";
 import { handleBookmarks } from "./routes/bookmarks.js";
 import { appConfig } from "./config.js";
-import { ClaudeService, makeClaudeService } from "./services/Claude.js";
+import {
+  LLMService,
+  LLMLayer,
+} from "./services/LLM.js";
 import {
   BookmarkAnalyzerService,
   makeBookmarkAnalyzerService,
@@ -11,13 +14,18 @@ import {
   makeObsidianWriterService,
 } from "./services/ObsidianWriter.js";
 
+const LoggerLive = Logger.replace(
+  Logger.defaultLogger,
+  Logger.prettyLogger({ colors: true })
+);
+
 const program = Effect.gen(function* () {
   const config = yield* appConfig;
 
-  // Build service layers
-  const claudeService = yield* makeClaudeService;
+  // Get services from context (provided by layers)
+  const llmService = yield* LLMService;
   const analyzerService = yield* makeBookmarkAnalyzerService.pipe(
-    Effect.provideService(ClaudeService, claudeService)
+    Effect.provideService(LLMService, llmService)
   );
   const writerService = yield* makeObsidianWriterService;
 
@@ -44,7 +52,9 @@ const program = Effect.gen(function* () {
           const result = await Effect.runPromise(
             handleBookmarks(body).pipe(
               Effect.provideService(BookmarkAnalyzerService, analyzerService),
-              Effect.provideService(ObsidianWriterService, writerService)
+              Effect.provideService(ObsidianWriterService, writerService),
+              Effect.provide(LoggerLive),
+              Logger.withMinimumLogLevel(LogLevel.Debug)
             )
           );
 
@@ -77,4 +87,13 @@ const program = Effect.gen(function* () {
   console.log(`Server running at http://localhost:${server.port}`);
 });
 
-Effect.runPromise(program).catch(console.error);
+// Run with Anthropic layer provided
+
+const MainLayer = Layer.mergeAll(LLMLayer, LoggerLive);
+
+Effect.runPromise(
+  program.pipe(
+    Effect.provide(MainLayer),
+    Logger.withMinimumLogLevel(LogLevel.Debug)
+  )
+).catch(console.error);

@@ -9,6 +9,7 @@ interface ScrapeResultMessage {
 }
 
 const serverUrlInput = document.getElementById("serverUrl") as HTMLInputElement;
+const unbookmarkCheckbox = document.getElementById("unbookmark") as HTMLInputElement;
 const scrapeVisibleBtn = document.getElementById("scrapeVisible") as HTMLButtonElement;
 const scrapeAllBtn = document.getElementById("scrapeAll") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
@@ -93,6 +94,7 @@ const scrapeAndSend = async (scrapeAll: boolean) => {
     // Send message to content script
     const response = await chrome.tabs.sendMessage(tab.id, {
       type: scrapeAll ? "SCRAPE_ALL" : "SCRAPE_VISIBLE",
+      unbookmark: unbookmarkCheckbox.checked,
     }) as ScrapeResultMessage;
     
     if (response.error) {
