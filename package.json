@@ -1,0 +1,17 @@
+{
+  "name": "x-to-obsidian",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "bun run --filter server dev",
+    "build": "bun run --filter '*' build",
+    "lint": "oxlint .",
+    "fmt": "oxfmt --write .",
+    "fmt:check": "oxfmt --check .",
+    "typecheck": "tsc --build"
+  },
+  "devDependencies": {
+    "oxlint": "^0.16.0",
+    "typescript": "^5.7.2"
+  }
+}
