@@ -11,7 +11,7 @@ const ClaudeResponseSchema = Schema.Struct({
   category: Schema.Literal("thread", "link", "image", "quote", "standalone"),
   suggestedPath: Schema.String,
   tags: Schema.Array(Schema.String),
-  summary: Schema.optional(Schema.String),
+  summary: Schema.optionalWith(Schema.String, { exact: true }),
 });
 
 export interface BookmarkAnalyzerService {
@@ -95,8 +95,8 @@ export const makeBookmarkAnalyzerService = Effect.gen(function* () {
         category: validated.category as BookmarkCategory,
         suggestedPath: validated.suggestedPath,
         tags: validated.tags,
-        summary: validated.summary,
-      } satisfies AnalyzedBookmark;
+        ...(validated.summary !== undefined && { summary: validated.summary }),
+      } as AnalyzedBookmark;
     });
 
   return BookmarkAnalyzerService.of({ analyze });

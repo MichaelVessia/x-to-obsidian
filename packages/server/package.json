@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@x-to-obsidian/core": "workspace:*",
-    "effect": "^3.12.5"
+    "effect": "^3.12.5",
+    "@effect/platform": "^0.94.0"
   },
   "devDependencies": {
     "bun-types": "^1.1.42"

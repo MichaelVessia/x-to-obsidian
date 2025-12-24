@@ -4,7 +4,7 @@ import { Schema } from "effect";
 export const MediaSchema = Schema.Struct({
   type: Schema.Literal("image", "video", "gif"),
   url: Schema.String,
-  alt: Schema.optional(Schema.String),
+  alt: Schema.optionalWith(Schema.String, { exact: true }),
 });
 export type Media = Schema.Schema.Type<typeof MediaSchema>;
 
@@ -38,9 +38,9 @@ export const RawBookmarkSchema: Schema.Schema<RawBookmark> = Schema.Struct({
   text: Schema.String,
   timestamp: Schema.String,
   media: Schema.Array(MediaSchema),
-  quotedTweet: Schema.optional(Schema.suspend((): Schema.Schema<RawBookmark> => RawBookmarkSchema)),
+  quotedTweet: Schema.optionalWith(Schema.suspend((): Schema.Schema<RawBookmark> => RawBookmarkSchema), { exact: true }),
   isThread: Schema.Boolean,
-  threadTweets: Schema.optional(Schema.Array(Schema.String)),
+  threadTweets: Schema.optionalWith(Schema.Array(Schema.String), { exact: true }),
   links: Schema.Array(LinkSchema),
 });
 
@@ -60,8 +60,8 @@ export const AnalyzedBookmarkSchema = Schema.Struct({
   category: BookmarkCategorySchema,
   suggestedPath: Schema.String,
   tags: Schema.Array(Schema.String),
-  summary: Schema.optional(Schema.String),
-  extractedContent: Schema.optional(Schema.String),
+  summary: Schema.optionalWith(Schema.String, { exact: true }),
+  extractedContent: Schema.optionalWith(Schema.String, { exact: true }),
 });
 export type AnalyzedBookmark = Schema.Schema.Type<typeof AnalyzedBookmarkSchema>;
 

@@ -8,9 +8,11 @@
     "lint": "oxlint .",
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
-    "typecheck": "tsc --build"
+    "typecheck": "tsc --build",
+    "prepare": "effect-language-service patch"
   },
   "devDependencies": {
+    "@effect/language-service": "^0.62.5",
     "oxlint": "^0.16.0",
     "typescript": "^5.7.2"
   }
