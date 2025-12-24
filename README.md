@@ -4,14 +4,14 @@ Export your X/Twitter bookmarks to your Obsidian vault with AI-powered categoriz
 
 ```mermaid
 graph LR
-    A[X / Twitter<br/>Bookmarks] -->|DOM scraping| B[Chrome Extension]
-    B -->|POST /api/bookmarks<br/>RawBookmark[]| C[Bun Server<br/>Effect-TS]
-    C -->|results[]| B
+    A["X / Twitter<br/>Bookmarks"] -->|DOM scraping| B["Chrome Extension"]
+    B -->|POST /api/bookmarks<br/>RawBookmark Array| C["Bun Server<br/>Effect-TS"]
+    C -->|results| B
     
-    C --> D[LLM Service<br/>Claude/Gemini]
-    D --> E[BookmarkAnalyzer<br/>category, tags, summary]
-    E --> F[ObsidianWriter<br/>markdown, dedup]
-    F -->|fs.write| G[Obsidian Vault<br/>Bookmarks/]
+    C --> D["LLM Service<br/>Claude/Gemini"]
+    D --> E["BookmarkAnalyzer<br/>category, tags, summary"]
+    E --> F["ObsidianWriter<br/>markdown, dedup"]
+    F -->|fs.write| G["Obsidian Vault<br/>Bookmarks/"]
     
     style A fill:#1DA1F2,color:#fff
     style B fill:#4A90E2,color:#fff
