@@ -156,17 +156,35 @@ Explains a pattern for optimizing React re-renders using memo.
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) installed
+- [Bun](https://bun.sh) installed, **or** [Nix](https://nixos.org) with `flake.nix` support
 - An Obsidian vault
 - API key for Claude (Anthropic) or Gemini (Google)
 
 ### Installation
+
+#### With Bun
 
 ```bash
 # Clone and install
 git clone <repo>
 cd x-to-obsidian
 bun install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your settings
+```
+
+#### With Nix
+
+```bash
+# Clone the repo
+git clone <repo>
+cd x-to-obsidian
+
+# Enter Nix environment (installs Bun automatically)
+nix flake update
+direnv allow    # or: nix develop
 
 # Configure environment
 cp .env.example .env
