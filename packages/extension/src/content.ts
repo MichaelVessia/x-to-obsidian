@@ -471,6 +471,11 @@ interface ScrapeAllMessage {
   unbookmark?: boolean;
 }
 
+interface UnbookmarkTweetsMessage {
+  type: "UNBOOKMARK_TWEETS";
+  tweetIds: string[];
+}
+
 interface ScrapeProgressMessage {
   type: "SCRAPE_PROGRESS";
   count: number;
@@ -487,14 +492,19 @@ interface ScrapeResultMessage {
   error?: string | undefined;
 }
 
-type IncomingMessage = ScrapeVisibleMessage | ScrapeAllMessage;
+type IncomingMessage = ScrapeVisibleMessage | ScrapeAllMessage | UnbookmarkTweetsMessage;
+
+interface UnbookmarkResult {
+  success: number;
+  failed: number;
+}
 
 // Listen for messages from popup/background
 chrome.runtime.onMessage.addListener(
   (
     message: IncomingMessage,
     _sender: chrome.runtime.MessageSender,
-    sendResponse: (response: ScrapeResultMessage | ScrapeProgressMessage) => void
+    sendResponse: (response: ScrapeResultMessage | ScrapeProgressMessage | UnbookmarkResult) => void
   ) => {
     if (message.type === "SCRAPE_VISIBLE") {
       const options = { unbookmark: message.unbookmark };
@@ -541,6 +551,35 @@ chrome.runtime.onMessage.addListener(
           });
         });
       return true; // Keep message channel open for async response
+    }
+
+    // Unbookmark specific tweets by ID (called after server confirms save)
+    if (message.type === "UNBOOKMARK_TWEETS") {
+      const { tweetIds } = message;
+      (async () => {
+        let success = 0;
+        let failed = 0;
+
+        for (const tweetId of tweetIds) {
+          const tweetEl = findTweetById(tweetId);
+          if (!tweetEl) {
+            // Tweet not in DOM - might have scrolled away or already unbookmarked
+            console.log(`[x-to-obsidian] Tweet ${tweetId} not in DOM, skipping unbookmark`);
+            failed++;
+            continue;
+          }
+
+          const result = await unbookmarkTweet(tweetEl, tweetId);
+          if (result === "success") {
+            success++;
+          } else {
+            failed++;
+          }
+        }
+
+        sendResponse({ success, failed });
+      })();
+      return true;
     }
 
     return false;

@@ -1,15 +1,15 @@
 // Popup script for X to Obsidian extension
+// Now just triggers background script and displays state
 
-import type { RawBookmark } from "@x-to-obsidian/core";
-
-interface ScrapeResultMessage {
-  type: "SCRAPE_RESULT";
-  bookmarks: RawBookmark[];
-  unbookmarkStats?: {
-    success: number;
-    notFound: number;
-    failed: number;
-  };
+interface ProcessState {
+  isProcessing: boolean;
+  totalCount: number;
+  processedCount: number;
+  successCount: number;
+  failedCount: number;
+  unbookmarkSuccessCount: number;
+  unbookmarkFailedCount: number;
+  currentPhase: "idle" | "scraping" | "sending" | "unbookmarking" | "complete" | "error";
   error?: string;
 }
 
@@ -63,93 +63,110 @@ const clearStatus = () => {
   progressEl.textContent = "";
 };
 
-const sendToServer = async (bookmarks: RawBookmark[]): Promise<void> => {
-  const serverUrl = serverUrlInput.value.replace(/\/$/, "");
-  
-  const response = await fetch(`${serverUrl}/api/bookmarks`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ bookmarks }),
-  });
-  
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(error.error || `Server returned ${response.status}`);
-  }
-  
-  return response.json();
-};
+const updateFromState = (state: ProcessState) => {
+  const { currentPhase, totalCount, processedCount, successCount, failedCount, unbookmarkSuccessCount, unbookmarkFailedCount, error } = state;
 
-const scrapeAndSend = async (scrapeAll: boolean) => {
-  const isOnBookmarks = await checkBookmarksPage();
-  if (!isOnBookmarks) return;
-  
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab.id) return;
-  
-  clearStatus();
-  setStatus(scrapeAll ? "Scrolling and scraping..." : "Scraping visible bookmarks...", "info");
-  
-  scrapeVisibleBtn.disabled = true;
-  scrapeAllBtn.disabled = true;
-  
-  try {
-    // Send message to content script
-    const response = await chrome.tabs.sendMessage(tab.id, {
-      type: scrapeAll ? "SCRAPE_ALL" : "SCRAPE_VISIBLE",
-      unbookmark: unbookmarkCheckbox.checked,
-    }) as ScrapeResultMessage;
-    
-    if (response.error) {
-      throw new Error(response.error);
-    }
-    
-    const bookmarks = response.bookmarks;
-    
-    if (bookmarks.length === 0) {
-      setStatus("No bookmarks found on page.", "info");
-      return;
-    }
-    
-    setStatus(`Found ${bookmarks.length} bookmarks. Sending to server...`, "info");
-    
-    await sendToServer(bookmarks);
-    
-    // Build success message with unbookmark stats if available
-    let successMsg = `Successfully processed ${bookmarks.length} bookmarks!`;
-    if (response.unbookmarkStats) {
-      const { success, failed } = response.unbookmarkStats;
-      if (success > 0 || failed > 0) {
-        successMsg += ` Unbookmarked: ${success}`;
-        if (failed > 0) {
-          successMsg += ` (${failed} failed)`;
+  // Update button states
+  const isProcessing = state.isProcessing;
+  scrapeVisibleBtn.disabled = isProcessing;
+  scrapeAllBtn.disabled = isProcessing;
+
+  switch (currentPhase) {
+    case "idle":
+      clearStatus();
+      break;
+
+    case "scraping":
+      setStatus("Scraping bookmarks...", "info");
+      if (totalCount > 0) {
+        progressEl.textContent = `Found ${totalCount} bookmarks`;
+      }
+      break;
+
+    case "sending":
+      setStatus(`Sending ${totalCount} bookmarks to server...`, "info");
+      progressEl.textContent = `Processed ${processedCount}/${totalCount}`;
+      break;
+
+    case "unbookmarking":
+      setStatus(`Unbookmarking saved tweets...`, "info");
+      progressEl.textContent = `Saved: ${successCount}, Unbookmarked: ${unbookmarkSuccessCount}`;
+      break;
+
+    case "complete": {
+      let msg = `Done! Saved ${successCount}/${totalCount}`;
+      if (failedCount > 0) {
+        msg += ` (${failedCount} failed)`;
+      }
+      if (unbookmarkSuccessCount > 0) {
+        msg += `. Unbookmarked: ${unbookmarkSuccessCount}`;
+        if (unbookmarkFailedCount > 0) {
+          msg += ` (${unbookmarkFailedCount} failed)`;
         }
       }
+      setStatus(msg, successCount > 0 ? "success" : "info");
+      progressEl.textContent = "";
+      break;
     }
-    setStatus(successMsg, "success");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    
-    // Check if content script isn't loaded
-    if (message.includes("Receiving end does not exist")) {
-      setStatus("Please refresh the bookmarks page and try again.", "error");
-    } else {
-      setStatus(`Error: ${message}`, "error");
-    }
-  } finally {
-    scrapeVisibleBtn.disabled = false;
-    scrapeAllBtn.disabled = false;
+
+    case "error":
+      setStatus(`Error: ${error || "Unknown error"}`, "error");
+      progressEl.textContent = "";
+      break;
   }
 };
 
-scrapeVisibleBtn.addEventListener("click", () => scrapeAndSend(false));
-scrapeAllBtn.addEventListener("click", () => scrapeAndSend(true));
+const startProcessing = async (scrapeAll: boolean) => {
+  const isOnBookmarks = await checkBookmarksPage();
+  if (!isOnBookmarks) return;
 
-// Listen for progress updates from content script
+  clearStatus();
+  setStatus("Starting...", "info");
+  scrapeVisibleBtn.disabled = true;
+  scrapeAllBtn.disabled = true;
+
+  // Send message to background script
+  chrome.runtime.sendMessage(
+    {
+      type: "START_PROCESSING",
+      scrapeAll,
+      unbookmark: unbookmarkCheckbox.checked,
+    },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        setStatus(`Error: ${chrome.runtime.lastError.message}`, "error");
+        scrapeVisibleBtn.disabled = false;
+        scrapeAllBtn.disabled = false;
+        return;
+      }
+      
+      if (!response?.success) {
+        setStatus(`Error: ${response?.error || "Failed to start"}`, "error");
+        scrapeVisibleBtn.disabled = false;
+        scrapeAllBtn.disabled = false;
+      }
+      // State updates will come via PROCESS_STATE messages
+    }
+  );
+};
+
+scrapeVisibleBtn.addEventListener("click", () => startProcessing(false));
+scrapeAllBtn.addEventListener("click", () => startProcessing(true));
+
+// Listen for state updates from background script
 chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === "PROCESS_STATE") {
+    updateFromState(message.state);
+  }
+
   if (message.type === "SCRAPE_PROGRESS") {
     progressEl.textContent = `Scraped ${message.count} bookmarks so far...`;
+  }
+});
+
+// Get initial state when popup opens
+chrome.runtime.sendMessage({ type: "GET_PROCESS_STATE" }, (state) => {
+  if (state && state.currentPhase !== "idle") {
+    updateFromState(state);
   }
 });
