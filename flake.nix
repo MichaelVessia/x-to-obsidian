@@ -20,16 +20,37 @@
       pkgs = nixpkgs.legacyPackages.${system};
       bun2nix' = bun2nix.packages.${system}.default;
     in {
-      packages.default = bun2nix'.mkDerivation {
+      packages.default = pkgs.stdenv.mkDerivation {
         pname = "x-to-obsidian";
         version = "0.0.1";
         src = ./.;
+
+        nativeBuildInputs = [
+          bun2nix'.hook
+          pkgs.makeBinaryWrapper
+        ];
 
         bunDeps = bun2nix'.fetchBunDeps {
           bunNix = ./bun.nix;
         };
 
-        module = "packages/server/src/index.ts";
+        # Skip default bun build (AOT compilation) - we'll run with bun interpreter
+        dontUseBunBuild = true;
+        dontUseBunCheck = true;
+        dontUseBunInstall = true;
+
+        installPhase = ''
+          runHook preInstall
+
+          mkdir -p $out/lib/x-to-obsidian
+          cp -r . $out/lib/x-to-obsidian
+
+          mkdir -p $out/bin
+          makeBinaryWrapper ${pkgs.bun}/bin/bun $out/bin/x-to-obsidian \
+            --add-flags "run $out/lib/x-to-obsidian/packages/server/src/index.ts"
+
+          runHook postInstall
+        '';
       };
 
       devShells.default = pkgs.mkShell {
