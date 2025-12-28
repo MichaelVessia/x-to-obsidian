@@ -1,110 +1,126 @@
-import { Effect, Context, Data, Schema } from "effect";
-import type { RawBookmark, AnalyzedBookmark, BookmarkCategory } from "@x-to-obsidian/core";
+import { Effect, Context, Schema, Layer } from "effect";
+import type {
+	RawBookmark,
+	AnalyzedBookmark,
+	BookmarkCategory,
+} from "@x-to-obsidian/core";
 import { LLMService, LLMError } from "./LLM.js";
 
-export class AnalyzerError extends Data.TaggedError("AnalyzerError")<{
-  message: string;
-  cause?: unknown;
-}> {}
+export class AnalyzerError extends Schema.TaggedError<AnalyzerError>()(
+	"AnalyzerError",
+	{
+		message: Schema.String,
+		cause: Schema.optional(Schema.Defect),
+	},
+) {}
 
 const LLMResponseSchema = Schema.Struct({
-  category: Schema.Literal("thread", "link", "image", "quote", "standalone"),
-  suggestedPath: Schema.String,
-  tags: Schema.Array(Schema.String),
-  summary: Schema.optionalWith(Schema.String, { exact: true }),
-  title: Schema.String,
+	category: Schema.Literal("thread", "link", "image", "quote", "standalone"),
+	suggestedPath: Schema.String,
+	tags: Schema.Array(Schema.String),
+	summary: Schema.optionalWith(Schema.String, { exact: true }),
+	title: Schema.String,
 });
-
-export interface BookmarkAnalyzerService {
-  readonly analyze: (
-    bookmark: RawBookmark
-  ) => Effect.Effect<AnalyzedBookmark, AnalyzerError | LLMError>;
-}
-
-export const BookmarkAnalyzerService = Context.GenericTag<BookmarkAnalyzerService>(
-  "BookmarkAnalyzerService"
-);
 
 const buildPrompt = (bookmark: RawBookmark): string => {
-  const parts = [
-    `Analyze this Twitter/X bookmark and provide categorization for saving to Obsidian.`,
-    ``,
-    `Tweet by @${bookmark.authorHandle} (${bookmark.authorDisplayName}):`,
-    `"${bookmark.text}"`,
-    ``,
-    `URL: ${bookmark.tweetUrl}`,
-    `Is Thread: ${bookmark.isThread}`,
-    `Has Media: ${bookmark.media.length > 0} (${bookmark.media.map((m) => m.type).join(", ")})`,
-    `Has Links: ${bookmark.links.length > 0}`,
-    bookmark.quotedTweet ? `Quotes: @${bookmark.quotedTweet.authorHandle}` : "",
-    ``,
-    `Respond with JSON only, no markdown:`,
-    `{`,
-    `  "category": "thread" | "link" | "image" | "quote" | "standalone",`,
-    `  "suggestedPath": "folder/subfolder",`,
-    `  "tags": ["tag1", "tag2"],`,
-    `  "summary": "Brief summary if useful",`,
-    `  "title": "Descriptive title for the note"`,
-    `}`,
-    ``,
-    `Category rules:`,
-    `- "thread": if isThread is true`,
-    `- "link": if main content is about an external link`,
-    `- "image": if main content is images/media`,
-    `- "quote": if quoting another tweet is the main point`,
-    `- "standalone": single tweet with text content`,
-    ``,
-    `For suggestedPath, just return empty string (we use flat folder structure).`,
-    `For tags, use Title Case names suitable for Obsidian wikilinks (e.g., "TypeScript", "Functional Programming", "Machine Learning").`,
-    `For title, create a concise, descriptive title (3-8 words) that captures the main topic or insight. Use Title Case. Examples: "Effect-TS Error Handling Patterns", "Why Rust Ownership Matters", "React Server Components Explained".`,
-  ];
+	const parts = [
+		`Analyze this Twitter/X bookmark and provide categorization for saving to Obsidian.`,
+		``,
+		`Tweet by @${bookmark.authorHandle} (${bookmark.authorDisplayName}):`,
+		`"${bookmark.text}"`,
+		``,
+		`URL: ${bookmark.tweetUrl}`,
+		`Is Thread: ${bookmark.isThread}`,
+		`Has Media: ${bookmark.media.length > 0} (${bookmark.media.map((m) => m.type).join(", ")})`,
+		`Has Links: ${bookmark.links.length > 0}`,
+		bookmark.quotedTweet ? `Quotes: @${bookmark.quotedTweet.authorHandle}` : "",
+		``,
+		`Respond with JSON only, no markdown:`,
+		`{`,
+		`  "category": "thread" | "link" | "image" | "quote" | "standalone",`,
+		`  "suggestedPath": "folder/subfolder",`,
+		`  "tags": ["tag1", "tag2"],`,
+		`  "summary": "Brief summary if useful",`,
+		`  "title": "Descriptive title for the note"`,
+		`}`,
+		``,
+		`Category rules:`,
+		`- "thread": if isThread is true`,
+		`- "link": if main content is about an external link`,
+		`- "image": if main content is images/media`,
+		`- "quote": if quoting another tweet is the main point`,
+		`- "standalone": single tweet with text content`,
+		``,
+		`For suggestedPath, just return empty string (we use flat folder structure).`,
+		`For tags, use Title Case names suitable for Obsidian wikilinks (e.g., "TypeScript", "Functional Programming", "Machine Learning").`,
+		`For title, create a concise, descriptive title (3-8 words) that captures the main topic or insight. Use Title Case. Examples: "Effect-TS Error Handling Patterns", "Why Rust Ownership Matters", "React Server Components Explained".`,
+	];
 
-  return parts.filter(Boolean).join("\n");
+	return parts.filter(Boolean).join("\n");
 };
 
-export const makeBookmarkAnalyzerService = Effect.gen(function* () {
-  const llm = yield* LLMService;
+export class BookmarkAnalyzerService extends Context.Tag(
+	"@x-to-obsidian/BookmarkAnalyzerService",
+)<
+	BookmarkAnalyzerService,
+	{
+		readonly analyze: (
+			bookmark: RawBookmark,
+		) => Effect.Effect<AnalyzedBookmark, AnalyzerError | LLMError>;
+	}
+>() {
+	static readonly layer = Layer.effect(
+		BookmarkAnalyzerService,
+		Effect.gen(function* () {
+			const llm = yield* LLMService;
 
-  const analyze = (
-    bookmark: RawBookmark
-  ): Effect.Effect<AnalyzedBookmark, AnalyzerError | LLMError> =>
-    Effect.gen(function* () {
-      yield* Effect.logDebug(`Building prompt for ${bookmark.tweetId}`);
-      const prompt = buildPrompt(bookmark);
-      yield* Effect.logInfo(`Calling LLM for ${bookmark.tweetId}`);
-      const response = yield* llm.analyze(prompt);
-      yield* Effect.logInfo(`Got LLM response for ${bookmark.tweetId}`);
+			const analyze = Effect.fn("BookmarkAnalyzerService.analyze")(function* (
+				bookmark: RawBookmark,
+			) {
+				yield* Effect.logDebug(`Building prompt for ${bookmark.tweetId}`);
+				const prompt = buildPrompt(bookmark);
+				yield* Effect.logInfo(`Calling LLM for ${bookmark.tweetId}`);
+				const response = yield* llm.analyze(prompt);
+				yield* Effect.logInfo(`Got LLM response for ${bookmark.tweetId}`);
 
-      // Parse JSON response
-      const parsed = yield* Effect.try({
-        try: () => JSON.parse(response),
-        catch: (error) =>
-          new AnalyzerError({
-            message: `Failed to parse LLM response as JSON: ${response}`,
-            cause: error,
-          }),
-      });
+				// Parse JSON response
+				const parsed = yield* Effect.try({
+					try: () => JSON.parse(response),
+					catch: (error) =>
+						new AnalyzerError({
+							message: `Failed to parse LLM response as JSON: ${response}`,
+							cause: error,
+						}),
+				});
 
-      // Validate against schema
-      const validated = yield* Schema.decodeUnknown(LLMResponseSchema)(parsed).pipe(
-        Effect.mapError(
-          (error) =>
-            new AnalyzerError({
-              message: `Invalid LLM response structure: ${error.message}`,
-              cause: error,
-            })
-        )
-      );
+				// Validate against schema
+				const validated = yield* Schema.decodeUnknown(LLMResponseSchema)(
+					parsed,
+				).pipe(
+					Effect.mapError(
+						(error) =>
+							new AnalyzerError({
+								message: `Invalid LLM response structure: ${error.message}`,
+								cause: error,
+							}),
+					),
+				);
 
-      return {
-        raw: bookmark,
-        category: validated.category as BookmarkCategory,
-        suggestedPath: validated.suggestedPath,
-        tags: validated.tags,
-        title: validated.title,
-        ...(validated.summary !== undefined && { summary: validated.summary }),
-      } as AnalyzedBookmark;
-    });
+				return {
+					raw: bookmark,
+					category: validated.category as BookmarkCategory,
+					suggestedPath: validated.suggestedPath,
+					tags: validated.tags,
+					title: validated.title,
+					...(validated.summary !== undefined && { summary: validated.summary }),
+				} as AnalyzedBookmark;
+			});
 
-  return BookmarkAnalyzerService.of({ analyze });
-});
+			return BookmarkAnalyzerService.of({ analyze });
+		}),
+	);
+
+	static readonly live = BookmarkAnalyzerService.layer.pipe(
+		Layer.provide(LLMService.live),
+	);
+}
