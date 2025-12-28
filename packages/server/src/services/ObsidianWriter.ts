@@ -15,14 +15,13 @@ export class WriterError extends Schema.TaggedError<WriterError>()(
 	},
 ) {}
 
-const slugify = (text: string, maxLength = 50): string => {
+const toFilename = (text: string): string => {
+	// Remove characters that are invalid in filenames
+	// Keep spaces, alphanumeric, hyphens, underscores
 	return text
-		.toLowerCase()
-		.replace(/[^a-z0-9\s-]/g, "")
-		.replace(/\s+/g, "-")
-		.replace(/-+/g, "-")
-		.slice(0, maxLength)
-		.replace(/-$/, "");
+		.replace(/[<>:"/\\|?*]/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
 };
 
 const generateFrontmatter = (bookmark: AnalyzedBookmark): string => {
@@ -201,12 +200,8 @@ export class ObsidianWriterService extends Context.Tag(
 					} satisfies ObsidianNote;
 				}
 
-				// Generate filename from LLM-generated title, falling back to tweet text or ID
-				const slug =
-					slugify(bookmark.title) ||
-					slugify(bookmark.raw.text) ||
-					bookmark.raw.tweetId;
-				const filename = `${slug}.md`;
+				// Generate filename from LLM-generated title, falling back to tweet ID
+				const filename = `${toFilename(bookmark.title) || bookmark.raw.tweetId}.md`;
 
 				// Build full path - flat structure, no subfolders
 				const relativePath = join(config.bookmarksFolder, filename);
