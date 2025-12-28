@@ -54,7 +54,7 @@ export const BookmarkCategorySchema = Schema.Literal(
 );
 export type BookmarkCategory = Schema.Schema.Type<typeof BookmarkCategorySchema>;
 
-// After Claude processing
+// After LLM processing
 export const AnalyzedBookmarkSchema = Schema.Struct({
   raw: RawBookmarkSchema,
   category: BookmarkCategorySchema,

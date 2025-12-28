@@ -47,7 +47,7 @@ const makeLLMServiceEffect = Effect.gen(function* () {
 	return LLMService.of({ analyze });
 });
 
-// Anthropic/Claude layer
+// Anthropic layer
 export const AnthropicLLMLayer = Layer.effect(
 	LLMService,
 	makeLLMServiceEffect,

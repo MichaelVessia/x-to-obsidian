@@ -7,7 +7,7 @@ export class AnalyzerError extends Data.TaggedError("AnalyzerError")<{
   cause?: unknown;
 }> {}
 
-const ClaudeResponseSchema = Schema.Struct({
+const LLMResponseSchema = Schema.Struct({
   category: Schema.Literal("thread", "link", "image", "quote", "standalone"),
   suggestedPath: Schema.String,
   tags: Schema.Array(Schema.String),
@@ -80,17 +80,17 @@ export const makeBookmarkAnalyzerService = Effect.gen(function* () {
         try: () => JSON.parse(response),
         catch: (error) =>
           new AnalyzerError({
-            message: `Failed to parse Claude response as JSON: ${response}`,
+            message: `Failed to parse LLM response as JSON: ${response}`,
             cause: error,
           }),
       });
 
       // Validate against schema
-      const validated = yield* Schema.decodeUnknown(ClaudeResponseSchema)(parsed).pipe(
+      const validated = yield* Schema.decodeUnknown(LLMResponseSchema)(parsed).pipe(
         Effect.mapError(
           (error) =>
             new AnalyzerError({
-              message: `Invalid Claude response structure: ${error.message}`,
+              message: `Invalid LLM response structure: ${error.message}`,
               cause: error,
             })
         )
