@@ -175,7 +175,7 @@ cp .env.example .env
 # Edit .env with your settings
 ```
 
-#### With Nix
+#### With Nix (Development)
 
 ```bash
 # Clone the repo
@@ -189,6 +189,62 @@ direnv allow    # or: nix develop
 # Configure environment
 cp .env.example .env
 # Edit .env with your settings
+```
+
+#### With Nix Flake (NixOS/Home Manager Service)
+
+You can run the server as a systemd user service by adding the flake to your NixOS configuration:
+
+```nix
+# flake.nix
+{
+  inputs.x-to-obsidian.url = "github:MichaelVessia/x-to-obsidian";
+  # ...
+}
+```
+
+Then create a home-manager module:
+
+```nix
+# x-to-obsidian.nix
+{ lib, pkgs, x-to-obsidian, ... }:
+let
+  pkg = x-to-obsidian.packages.${pkgs.system}.default;
+in lib.mkIf pkgs.stdenv.isLinux {
+  systemd.user.services.x-to-obsidian = {
+    Unit = {
+      Description = "X to Obsidian Server";
+      After = [ "network.target" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "${pkg}/bin/x-to-obsidian";
+      Restart = "on-failure";
+      Environment = [
+        "VAULT_PATH=/path/to/your/obsidian/vault"
+        "LLM_PROVIDER=google"
+      ];
+      # Or use EnvironmentFile for secrets:
+      # EnvironmentFile = "%h/.secrets.env";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+}
+```
+
+Manage the service with:
+
+```bash
+systemctl --user status x-to-obsidian   # check status
+systemctl --user restart x-to-obsidian  # restart after updates
+journalctl --user -u x-to-obsidian -f   # tail logs
+```
+
+To update after upstream changes:
+
+```bash
+nix flake update x-to-obsidian
+# Then rebuild your system
 ```
 
 ### Environment Variables
@@ -227,11 +283,23 @@ bun run --filter @x-to-obsidian/extension build
 
 ## Usage
 
-1. Start the server (`bun run dev`)
-2. Navigate to [x.com/i/bookmarks](https://x.com/i/bookmarks)
-3. Click the extension icon
-4. Click "Scrape Visible" or "Scrape All"
-5. Bookmarks appear in your Obsidian vault!
+**Quick Start:** You need two things running:
+
+1. **The server** - processes bookmarks and writes to your Obsidian vault
+2. **The Chrome extension** - scrapes bookmarks from X and sends to server
+
+### Steps
+
+1. Start the server (`bun run dev` or via systemd service)
+2. Load the Chrome extension (see [Loading the Extension](#loading-the-extension))
+3. Navigate to [x.com/i/bookmarks](https://x.com/i/bookmarks)
+4. Click the extension icon
+5. Click "Scrape Visible" or "Scrape All"
+6. Bookmarks appear in your Obsidian vault!
+
+### Send Individual Posts Directly
+
+You can also send any post directly to Obsidian without bookmarking it first. When browsing X, click the "Send to Obsidian" button that appears on each post to instantly save it to your vault.
 
 ### Options
 
