@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Build all targets
+        run: |
+          mkdir -p dist
+          bun build packages/server/src/index.ts --compile --target=bun-linux-x64 --outfile dist/x-to-obsidian-linux-x64
+          bun build packages/server/src/index.ts --compile --target=bun-darwin-x64 --outfile dist/x-to-obsidian-darwin-x64
+          bun build packages/server/src/index.ts --compile --target=bun-darwin-arm64 --outfile dist/x-to-obsidian-darwin-arm64
+
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+      - name: Update Homebrew tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+
+          # Get SHA256 values
+          SHA_LINUX_X64=$(grep x-to-obsidian-linux-x64 dist/checksums.txt | cut -d' ' -f1)
+          SHA_DARWIN_X64=$(grep x-to-obsidian-darwin-x64 dist/checksums.txt | cut -d' ' -f1)
+          SHA_DARWIN_ARM64=$(grep x-to-obsidian-darwin-arm64 dist/checksums.txt | cut -d' ' -f1)
+
+          # Clone tap repo
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/MichaelVessia/homebrew-tap.git tap
+          cd tap
+
+          # Create/update formula
+          mkdir -p Formula
+          cat > Formula/x-to-obsidian.rb << FORMULA
+          class XToObsidian < Formula
+            desc "Scrape X bookmarks to Obsidian vault"
+            homepage "https://github.com/MichaelVessia/x-to-obsidian"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/MichaelVessia/x-to-obsidian/releases/download/v${VERSION}/x-to-obsidian-darwin-arm64"
+                sha256 "${SHA_DARWIN_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/MichaelVessia/x-to-obsidian/releases/download/v${VERSION}/x-to-obsidian-darwin-x64"
+                sha256 "${SHA_DARWIN_X64}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/MichaelVessia/x-to-obsidian/releases/download/v${VERSION}/x-to-obsidian-linux-x64"
+                sha256 "${SHA_LINUX_X64}"
+              end
+            end
+
+            def install
+              if OS.mac?
+                bin.install "x-to-obsidian-darwin-#{Hardware::CPU.arm? ? "arm64" : "x64"}" => "x-to-obsidian"
+              else
+                bin.install "x-to-obsidian-linux-x64" => "x-to-obsidian"
+              end
+            end
+
+            def caveats
+              <<~EOS
+                x-to-obsidian requires configuration. Set environment variables:
+
+                  export ANTHROPIC_API_KEY="your-api-key"
+                  export OBSIDIAN_VAULT_PATH="/path/to/vault"
+
+                See https://github.com/MichaelVessia/x-to-obsidian for full setup.
+              EOS
+            end
+
+            test do
+              assert_match "x-to-obsidian", shell_output("#{bin}/x-to-obsidian --help")
+            end
+          end
+          FORMULA
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/x-to-obsidian.rb
+          git commit -m "x-to-obsidian ${VERSION}"
+          git push
