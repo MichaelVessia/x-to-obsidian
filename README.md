@@ -162,11 +162,34 @@ Explains a pattern for optimizing React re-renders using memo.
 
 ### Installation
 
-#### With Bun
+#### Homebrew (macOS)
+
+```bash
+brew tap MichaelVessia/tap
+brew install x-to-obsidian
+```
+
+#### Download Binary
+
+```bash
+# macOS ARM64 (Apple Silicon)
+curl -L https://github.com/MichaelVessia/x-to-obsidian/releases/latest/download/x-to-obsidian-darwin-arm64 -o x-to-obsidian
+chmod +x x-to-obsidian && mv x-to-obsidian /usr/local/bin/
+
+# macOS x64 (Intel)
+curl -L https://github.com/MichaelVessia/x-to-obsidian/releases/latest/download/x-to-obsidian-darwin-x64 -o x-to-obsidian
+chmod +x x-to-obsidian && mv x-to-obsidian /usr/local/bin/
+
+# Linux x64
+curl -L https://github.com/MichaelVessia/x-to-obsidian/releases/latest/download/x-to-obsidian-linux-x64 -o x-to-obsidian
+chmod +x x-to-obsidian && sudo mv x-to-obsidian /usr/local/bin/
+```
+
+#### With Bun (Development)
 
 ```bash
 # Clone and install
-git clone <repo>
+git clone https://github.com/MichaelVessia/x-to-obsidian
 cd x-to-obsidian
 bun install
 
